@@ -52,8 +52,10 @@ Then create a `CLAUDE.md` at the project root:
 ```markdown
 # <Project Name> — Claude Rules
 
-@.claude/remote/claude/rules/bash-scripts.md
+@.claude/remote/CLAUDE.md
 ```
+
+This delegates all rule imports to the submodule's own `CLAUDE.md`, so new rules are picked up automatically without touching the consuming project.
 
 ## Keeping Rules Up to Date
 
