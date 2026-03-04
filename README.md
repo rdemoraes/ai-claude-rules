@@ -58,13 +58,12 @@ Then create a `CLAUDE.md` at the project root:
 ## Keeping Rules Up to Date
 
 ### First-time Setup (after cloning a project that uses this submodule)
-
 ```bash
 git submodule update --init
 ```
 
+### Update to latest rules in a consuming project
 ```bash
-# Update to latest rules in a consuming project
 git submodule update --remote .claude/remote
 git add .claude/remote
 git commit -m "chore: update ai-rules"
