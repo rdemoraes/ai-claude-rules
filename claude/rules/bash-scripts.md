@@ -137,6 +137,46 @@ get_account_id() {
 }
 ```
 
+## Naming Conventions
+
+Follows the [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) — the most widely adopted Bash standard.
+
+| Construct | Convention | Example |
+|-----------|-----------|---------|
+| Local variables | `snake_case` | `account_name`, `existing_alias` |
+| Functions | `snake_case` | `get_existing_alias`, `build_alias` |
+| Global variables | `UPPER_SNAKE_CASE` | `OUTPUT_FORMAT`, `AWS_PROFILE` |
+| Constants (`readonly`) | `UPPER_SNAKE_CASE` | `readonly DEFAULT_REGION="us-east-1"` |
+| Environment variables | `UPPER_SNAKE_CASE` | `AWS_REGION`, `KUBECONFIG` |
+
+```bash
+# BAD
+accountName="prod"           # camelCase — not idiomatic Bash
+Account_Name="prod"          # mixed — confusing
+EXISTING_alias=""            # mixed case — pick one
+
+# GOOD
+account_name="prod"          # local variable: snake_case
+readonly DEFAULT_REGION="us-east-1"   # constant: UPPER_SNAKE_CASE
+OUTPUT_FORMAT="${OUTPUT_FORMAT:-text}" # global/env: UPPER_SNAKE_CASE
+
+get_existing_alias() { ... } # function: snake_case
+```
+
+**Key rule**: `UPPER_SNAKE_CASE` signals "global or exported". `snake_case` signals "local to this function or script". Never use `UPPER_SNAKE_CASE` for `local` variables.
+
+```bash
+# BAD — uppercase local looks like a global
+set_account_alias() {
+  local ALIAS="$1"      # misleading — looks like an env var
+}
+
+# GOOD
+set_account_alias() {
+  local alias="$1"      # clearly local
+}
+```
+
 ## Clean Code Rules
 
 - **Meaningful names**: `get_existing_alias` not `check`. `account_name` not `n`.
@@ -171,6 +211,122 @@ log_error() { echo "[ERROR] $*" >&2; }
 ```
 
 Never use bare `echo` for status messages in domain functions — only in render functions.
+
+## Testing
+
+### Framework
+
+Use [`bats-core`](https://github.com/bats-core/bats-core) — the industry-standard test framework for Bash. It provides TAP-compliant output, `setup`/`teardown` hooks, and first-class CI support.
+
+Install:
+
+```bash
+# macOS
+brew install bats-core
+
+# or via git submodule (portable, no system dependency)
+git submodule add https://github.com/bats-core/bats-core.git tests/bats
+```
+
+Run tests:
+
+```bash
+# Run all tests
+bats tests/
+
+# Run a single test file
+bats tests/account_test.bats -v
+```
+
+### Project Structure
+
+```
+scripts/
+├── main.sh
+├── lib/
+│   └── aws/
+│       └── account.sh
+└── tests/
+    ├── bats/                        # bats-core submodule (if not installed globally)
+    ├── helpers/
+    │   └── mock.sh                  # shared mock helpers
+    └── aws/
+        └── account_test.bats        # tests for lib/aws/account.sh
+```
+
+### Test File Structure
+
+Each `.bats` file tests one `lib/<domain>/<resource>.sh` module. Source only the file under test — never `main.sh`.
+
+```bash
+#!/usr/bin/env bats
+
+setup() {
+  # Source the module under test
+  source "${BATS_TEST_DIRNAME}/../../lib/aws/account.sh"
+  # Source shared mock helpers
+  source "${BATS_TEST_DIRNAME}/../helpers/mock.sh"
+}
+
+teardown() {
+  # Reset any stubs/mocks
+  unset -f aws
+}
+```
+
+### Mocking External Commands
+
+Override external commands (e.g., `aws`, `kubectl`) by defining a shell function with the same name inside the test. Restore them in `teardown`.
+
+```bash
+@test "get_existing_alias returns alias when one exists" {
+  aws() {
+    echo "my-alias"
+  }
+
+  run get_existing_alias "us-east-1"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "my-alias" ]
+}
+
+@test "get_existing_alias returns empty when none exist" {
+  aws() {
+    echo "None"
+  }
+
+  run get_existing_alias "us-east-1"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "None" ]
+}
+
+@test "create_alias exits 1 on aws failure" {
+  aws() {
+    return 1
+  }
+
+  run create_alias "my-alias" "us-east-1"
+
+  [ "$status" -eq 1 ]
+}
+```
+
+Use `run` before every function call under test — it captures `$status` and `$output` without aborting the test on failure.
+
+### Required Test Cases
+
+Every function in `lib/<domain>/<resource>.sh` must have tests covering:
+
+1. **Happy path** — correct output and exit code 0.
+2. **Idempotent/no-op path** — resource already exists, no action taken.
+3. **Error path** — external command fails, function exits with code 1 and logs an error.
+
+### When to Run Tests
+
+- **Before every commit** — `bats tests/` must pass locally before pushing.
+- **In CI** — the pipeline must run `bats tests/` and fail on any test failure.
+- **When adding a function** — write the test alongside the implementation, not after.
 
 ## Project Conventions
 

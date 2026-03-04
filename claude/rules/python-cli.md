@@ -213,6 +213,33 @@ def render_result(output: str, alias: str, created: bool) -> None:
 - Never mix rendering with action or builder logic.
 - Use `typer.echo()` for all output, never `print()`.
 
+## Naming Conventions
+
+Follows [PEP 8](https://peps.python.org/pep-0008/) — the definitive Python standard.
+
+| Construct | Convention | Example |
+|-----------|-----------|---------|
+| Variables | `snake_case` | `account_name`, `existing_alias` |
+| Functions | `snake_case` | `get_existing_alias`, `build_alias` |
+| Constants | `UPPER_SNAKE_CASE` | `DEFAULT_REGION = "us-east-1"` |
+| Classes | `PascalCase` | `AppContext`, `AliasResult` |
+| Private/internal | `_snake_case` | `_session`, `_build_suffix` |
+| CLI command names | `kebab-case` | `set-alias`, `list-accounts` |
+| Module/file names | `snake_case` | `account.py`, `app_context.py` |
+
+```python
+# BAD
+accountName = "prod"           # camelCase — not Python
+ACCOUNT_name = "prod"          # mixed — confusing
+def GetAlias(): ...            # PascalCase on a function
+
+# GOOD
+account_name = "prod"          # variable: snake_case
+DEFAULT_REGION = "us-east-1"   # constant: UPPER_SNAKE_CASE
+def get_existing_alias(): ...  # function: snake_case
+class AppContext: ...           # class: PascalCase
+```
+
 ## Clean Code Rules
 
 - **Meaningful names**: `get_existing_alias` not `check`. `account_name` not `n`.
@@ -223,7 +250,63 @@ def render_result(output: str, alias: str, created: bool) -> None:
 
 ## Testing
 
-Use `typer.testing.CliRunner` for integration tests. Test the full CLI invocation, not individual functions.
+### Framework
+
+- **Test runner**: [`pytest`](https://docs.pytest.org/) — industry standard, required for all projects.
+- **Coverage**: `pytest-cov` — enforce a minimum threshold; fail the build below it.
+- **Mocking**: `unittest.mock` (stdlib) — use `patch` and `MagicMock`. `pytest-mock` is optional but acceptable.
+- **CLI integration**: `typer.testing.CliRunner` — test the full CLI invocation, not individual functions.
+
+Add to `pyproject.toml`:
+
+```toml
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=<pkg> --cov-report=term-missing --cov-fail-under=80"
+```
+
+Run tests:
+
+```bash
+# Run all tests with coverage
+pytest
+
+# Run a specific test file
+pytest tests/test_account.py -v
+```
+
+### Test Structure
+
+Two layers — unit tests for pure functions, integration tests for full CLI invocations:
+
+```
+tests/
+├── unit/
+│   └── test_<resource>_helpers.py   # builder and renderer functions
+└── integration/
+    └── test_<resource>.py           # full CLI via CliRunner
+```
+
+**Unit tests** target pure functions (builders, renderers) with no mocking:
+
+```python
+from <pkg>.commands.aws.account import build_alias, render_result
+
+def test_build_alias_format() -> None:
+    alias = build_alias("my-account")
+    assert alias.startswith("my-account-")
+
+def test_render_result_json(capsys: pytest.CaptureFixture[str]) -> None:
+    render_result("json", "my-account-abc123", created=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data == {"alias": "my-account-abc123", "created": True}
+```
+
+**Integration tests** test the full CLI invocation via `CliRunner`, mocking only external I/O:
 
 ```python
 from typer.testing import CliRunner
@@ -246,11 +329,20 @@ def test_set_alias_creates_new(mock_session: MagicMock, mock_petname: MagicMock)
     iam_mock.create_account_alias.assert_called_once_with(AccountAlias="my-account-brave-lion")
 ```
 
-**Required test cases for every command:**
-1. Happy path (resource created/action taken)
-2. Idempotent path (resource already exists, no duplicate action)
-3. JSON output format
-4. Error path (external API failure → exit code 1, message on stderr)
+### Required Test Cases
+
+Every command must have tests covering:
+
+1. **Happy path** — resource created/action taken, correct output, exit code 0.
+2. **Idempotent path** — resource already exists, no duplicate action taken.
+3. **JSON output** — `--output json` returns valid JSON with expected keys.
+4. **Error path** — external API failure exits with code 1 and writes message to stderr.
+
+### When to Run Tests
+
+- **Before every commit** — tests must pass locally before pushing.
+- **In CI** — the pipeline must run `pytest` and fail on any test failure or coverage drop.
+- **When adding a command** — write tests before or alongside the implementation (not after).
 
 ## Project Conventions
 
