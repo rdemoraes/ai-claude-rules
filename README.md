@@ -36,7 +36,15 @@ This repo acts as the rule source; each project references it via git submodule.
 ## Consuming This Repo in a New Project
 
 ```bash
-git submodule add git@github.com:rdemoraes/ai-rules.git .claude/remote
+git submodule add git@github.com:rdemoraes/ai-claude-rules.git .claude/remote
+```
+
+This produces the following entry in `.gitmodules`:
+
+```ini
+[submodule ".claude/remote"]
+	path = .claude/remote
+	url = git@github.com:rdemoraes/ai-claude-rules.git
 ```
 
 Then create a `CLAUDE.md` at the project root:
